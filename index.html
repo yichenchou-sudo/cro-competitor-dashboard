@@ -113,7 +113,7 @@
                      reportBody.innerHTML = `<tr><td colspan="8" class="text-center p-8">No URLs are being monitored. Add one to begin.</td></tr>`;
                 }
             } catch (e) {
-                console.error("Could not fetch URL list", e);
+                console.error("Could not fetch URL list:", e);
                 lastUpdatedEl.textContent = "Error: Could not fetch URL list from server.";
             }
             fetchLatestReport();
@@ -177,36 +177,24 @@
                 competitorFilter.appendChild(option);
             });
         }
-        function applyFilters() { /* ... same as previous version ... */ }
+        function applyFilters() {
+            const selectedCompetitor = competitorFilter.value;
+            const selectedChange = changeFilter.value;
+
+            allTableRows.forEach(row => {
+                const competitorMatch = selectedCompetitor === 'All' || row.dataset.competitor === selectedCompetitor;
+                const changeMatch = selectedChange === 'All Changes' || (selectedChange === 'Changes Only' && row.dataset.change === 'yes');
+                row.style.display = (competitorMatch && changeMatch) ? '' : 'none';
+            });
+        }
 
         async function addNewUrl() {
             const url = newUrlInput.value.trim();
-            if (!url || currentMonitoredUrls.includes(url)) {
-                newUrlInput.value = '';
-                return;
-            };
+            if (!url || currentMonitoredUrls.includes(url)) return;
             
             currentMonitoredUrls.push(url);
             newUrlInput.value = '';
-
-            const today = new Date().toISOString().split('T')[0].replace('2024','2025');
-            let competitorName = 'Unknown', subcategory = 'General';
-            try {
-                const urlObject = new URL(url);
-                let hostname = urlObject.hostname.replace('www.', '');
-                competitorName = hostname.charAt(0).toUpperCase() + hostname.slice(1).split('.')[0];
-                const pathSegments = urlObject.pathname.split('/').filter(Boolean);
-                if (pathSegments.length > 0) {
-                    const meaningfulSegment = pathSegments.find(s => s.length > 3 && s !== 'uk') || pathSegments[0];
-                    subcategory = meaningfulSegment.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-                }
-            } catch (e) { /* Invalid URL */ }
-
-            const newRowData = { scanDate: today, competitor: competitorName, url: url, subcategory: subcategory, changeDetected: false, changeStatus: 'Pending Scan', summary: 'Awaiting first scan...' };
-            currentReportData.unshift(newRowData);
-            renderReport(currentReportData);
-            populateFilters(currentReportData);
-
+            
             try {
                 await fetch(`${window.location.origin}/api/update-urls`, {
                     method: 'POST',
@@ -233,8 +221,6 @@
                     body: JSON.stringify({ urls: currentMonitoredUrls }),
                 });
                 rowToRemove.remove();
-                currentReportData = currentReportData.filter(row => row.url !== urlToRemove);
-                populateFilters(currentReportData);
             } catch(e) { console.error("Failed to update URL list:", e); }
         }
         
