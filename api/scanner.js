@@ -2,31 +2,89 @@ export const config = {
   runtime: 'edge',
 };
 
-// A simple in-memory store for demonstration. 
-// A real app would use a database (like Vercel KV or a Redis instance).
+// IMPORTANT: In a real production app, you would use a persistent database like Vercel KV, Upstash, or Supabase
+// to store previous scans. This in-memory Map will reset every time the serverless function restarts.
 const previousScans = new Map();
 
-async function fetchAndHash(url) {
+// --- Gemini AI Analysis Function ---
+async function getAiAnalysis(oldHtml, newHtml) {
+  // In Vercel, you would set your GEMINI_API_KEY in the project's Environment Variables settings.
+  const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+  const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${GEMINI_API_KEY}`;
+
+  const systemPrompt = `You are an expert Conversion Rate Optimization (CRO) specialist.
+    You will be given two HTML snippets from the same webpage: an old version and a new version.
+    Your task is to identify the single most significant strategic change between them.
+    Ignore minor changes like updated dates, copyright years, or random tracking IDs.
+    Focus on changes to headlines, calls-to-action (CTAs), forms, pricing, social proof, or overall value proposition.
+
+    Respond ONLY with a valid JSON object with the following structure:
+    {
+      "changeCategory": "string", // e.g., "Headline Test", "Form Optimization", "CTA Change", "Social Proof", "Pricing Update", "Content Update"
+      "summary": "string", // A concise, one-sentence summary of what changed.
+      "insight": "string", // A brief analysis of WHY the change was likely made.
+      "hypothesis": "string" // A formal A/B test hypothesis that the user could run on their own site, inspired by this change.
+    }`;
+
+  const requestBody = {
+    systemInstruction: { parts: [{ text: systemPrompt }] },
+    contents: [{ parts: [{ text: `Here is the old HTML:\n\`\`\`html\n${oldHtml}\n\`\`\`\n\nHere is the new HTML:\n\`\`\`html\n${newHtml}\n\`\`\`` }] }],
+    generationConfig: { responseMimeType: "application/json" }
+  };
+
   try {
-    const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-      }
+    const response = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(requestBody),
     });
     if (!response.ok) {
-      console.error(`Failed to fetch ${url}: ${response.statusText}`);
-      return { content: null, error: `HTTP error! status: ${response.status}` };
+      console.error("Gemini API Error:", await response.text());
+      return null;
     }
-    const text = await response.text();
-    // A simple hash to represent the content. A real app might use a more robust method.
-    const hash = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text));
-    const hashString = Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
-    return { hash: hashString, error: null };
-  } catch (e) {
-    console.error(`Error fetching or hashing ${url}:`, e);
-    return { hash: null, error: e.message };
+    const data = await response.json();
+    return JSON.parse(data.candidates[0].content.parts[0].text);
+  } catch (error) {
+    console.error('Error calling Gemini API:', error);
+    return null;
   }
 }
+
+// --- UPGRADED Core Scanner Logic using a Headless Browser ---
+async function fetchAndAnalyze(url) {
+  const BROWSERLESS_API_KEY = process.env.BROWSERLESS_API_KEY;
+  if (!BROWSERLESS_API_KEY) {
+      return { content: null, error: "BROWSERLESS_API_KEY is not set in environment variables." };
+  }
+  
+  const BROWSERLESS_API_URL = `https://chrome.browserless.io/content?token=${BROWSERLESS_API_KEY}`;
+
+  try {
+    const response = await fetch(BROWSERLESS_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ 
+        url: url,
+        // We can add logic here to wait for specific elements if needed
+        // waitFor: '.form-widget' 
+      }),
+    });
+
+    if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`Browserless Error for ${url}: ${errorText}`);
+        return { content: null, error: `Headless browser error: ${response.status}` };
+    }
+    
+    // This HTML is fully rendered after JavaScript has run
+    const currentHtml = await response.text();
+    return { content: currentHtml, error: null };
+  } catch (e) {
+    console.error(`Error calling Browserless for ${url}:`, e);
+    return { content: null, error: e.message };
+  }
+}
+
 
 function getSubcategoryFromUrl(url) {
     try {
@@ -40,70 +98,51 @@ function getSubcategoryFromUrl(url) {
     return 'General';
 }
 
-
 export default async function handler(request) {
-  if (request.method !== 'POST') {
-    return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405 });
-  }
+  if (request.method !== 'POST') return new Response(JSON.stringify({ error: 'Method not allowed' }), { status: 405 });
 
   const { urls } = await request.json();
-  if (!urls || !Array.isArray(urls)) {
-    return new Response(JSON.stringify({ error: 'Missing or invalid `urls` array in request body' }), { status: 400 });
-  }
+  if (!urls || !Array.isArray(urls)) return new Response(JSON.stringify({ error: 'Invalid `urls` array' }), { status: 400 });
 
   const reportData = [];
   const today = new Date().toISOString().split('T')[0].replace('2024','2025');
 
   for (const url of urls) {
-      const { hash: currentHash, error } = await fetchAndHash(url);
-      
-      if (error) {
-        // Handle fetch errors gracefully
+    const { content: currentHtml, error } = await fetchAndAnalyze(url);
+    const competitor = new URL(url).hostname.replace('www.', '');
+    const subcategory = getSubcategoryFromUrl(url);
+    
+    if (error) {
+      reportData.push({ scanDate: today, competitor, url, subcategory, changeDetected: false, changeStatus: "Scan Error", summary: error });
+      continue;
+    }
+
+    const previousHtml = previousScans.get(url);
+    const changeDetected = previousHtml && currentHtml !== previousHtml;
+
+    if (changeDetected) {
+      const analysis = await getAiAnalysis(previousHtml, currentHtml);
+      if (analysis) {
         reportData.push({
-            scanDate: today,
-            competitor: new URL(url).hostname.replace('www.', ''),
-            url: url,
-            subcategory: getSubcategoryFromUrl(url),
-            changeDetected: false,
-            changeStatus: "Scan Error",
-            summary: error,
+          scanDate: today, competitor, url, subcategory, changeDetected: true,
+          changeStatus: "Permanent Rollout",
+          ...analysis
         });
-        continue;
+      } else {
+        reportData.push({ scanDate: today, competitor, url, subcategory, changeDetected: true, changeStatus: "Permanent Rollout", changeCategory: "Content Update", summary: "Change detected, but AI analysis failed." });
       }
-
-      const previousHash = previousScans.get(url);
-      const changeDetected = previousHash && currentHash !== previousHash;
-
-      let summary = "Initial baseline scan completed.";
-      if (previousHash) {
-          summary = changeDetected ? "Content has changed since last scan." : "No significant changes detected.";
-      }
-
-      reportData.push({
-        scanDate: today,
-        competitor: new URL(url).hostname.replace('www.', ''),
-        url: url,
-        subcategory: getSubcategoryFromUrl(url),
-        changeDetected: changeDetected,
-        changeStatus: changeDetected ? "Permanent Rollout" : "No Change",
-        changeCategory: changeDetected ? "Content Update" : "N/A",
-        summary: summary,
-        insight: changeDetected ? "A change was detected. Manual review is recommended to determine strategic impact." : "N/A",
-        hypothesis: changeDetected ? "A/B test hypothesis could be formulated after manual review." : "N/A",
-      });
-
-      // Update the "database" with the new hash for the next scan
-      previousScans.set(url, currentHash);
+    } else {
+      reportData.push({ scanDate: today, competitor, url, subcategory, changeDetected: false, changeStatus: previousHtml ? "No Change" : "Baseline Scan" });
+    }
+    
+    previousScans.set(url, currentHtml);
   }
 
   return new Response(JSON.stringify({
     lastUpdated: new Date().toISOString(),
     reportData: reportData,
   }), {
-    headers: { 
-        'Content-Type': 'application/json',
-        'Access-Control-Allow-Origin': '*', // Required for Vercel Hobby plan
-    },
+    headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
   });
 }
 
