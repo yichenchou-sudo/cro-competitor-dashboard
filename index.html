@@ -105,7 +105,7 @@
             if(cachedReport) updateDashboard(JSON.parse(cachedReport));
 
             try {
-                const response = await fetch('/api/get-urls');
+                const response = await fetch(`${window.location.origin}/api/get-urls`);
                 const data = await response.json();
                 if (data.error) throw new Error(data.error);
                 currentMonitoredUrls = data.urls || [];
@@ -186,11 +186,9 @@
                 return;
             };
             
-            // Add to the master list
             currentMonitoredUrls.push(url);
             newUrlInput.value = '';
 
-            // Update the UI immediately for good UX
             const today = new Date().toISOString().split('T')[0].replace('2024','2025');
             let competitorName = 'Unknown', subcategory = 'General';
             try {
@@ -202,24 +200,20 @@
                     const meaningfulSegment = pathSegments.find(s => s.length > 3 && s !== 'uk') || pathSegments[0];
                     subcategory = meaningfulSegment.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
                 }
-            } catch (e) { /* Invalid URL, but let the server handle it */ }
+            } catch (e) { /* Invalid URL */ }
 
             const newRowData = { scanDate: today, competitor: competitorName, url: url, subcategory: subcategory, changeDetected: false, changeStatus: 'Pending Scan', summary: 'Awaiting first scan...' };
             currentReportData.unshift(newRowData);
             renderReport(currentReportData);
             populateFilters(currentReportData);
 
-            // Update the server in the background
             try {
-                await fetch('/api/update-urls', {
+                await fetch(`${window.location.origin}/api/update-urls`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ urls: currentMonitoredUrls }),
                 });
-            } catch (e) { 
-                console.error("Failed to update URL list:", e);
-                // Optionally, add error handling to remove the optimistic UI update
-            }
+            } catch (e) { console.error("Failed to update URL list:", e); }
         }
         
         function exportTableToCSV() { /* ... same as previous version ... */ }
@@ -233,7 +227,7 @@
             currentMonitoredUrls = currentMonitoredUrls.filter(url => url !== urlToRemove);
             
             try {
-                 await fetch('/api/update-urls', {
+                 await fetch(`${window.location.origin}/api/update-urls`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ urls: currentMonitoredUrls }),
@@ -246,7 +240,7 @@
         
         async function fetchLatestReport() {
             try {
-                const response = await fetch('/api/get-report');
+                const response = await fetch(`${window.location.origin}/api/get-report`);
                 if (!response.ok) return;
                 const report = await response.json();
                 if (report.error) { console.error("Error from get-report API:", report.error); return; }
@@ -263,7 +257,7 @@
             scanBtnText.textContent = 'Queueing...';
 
             try {
-                const response = await fetch('/api/start-scan', { method: 'POST' });
+                const response = await fetch(`${window.location.origin}/api/start-scan`, { method: 'POST' });
                 if (!response.ok) throw new Error('Failed to queue scan.');
 
                 scanBtnText.textContent = 'Scan in Progress...';
