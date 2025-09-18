@@ -112,7 +112,7 @@
                      reportBody.innerHTML = `<tr><td colspan="8" class="text-center p-8">No URLs are being monitored. Add one to begin.</td></tr>`;
                 }
             } catch (e) {
-                console.error("Could not fetch URL list:", e);
+                console.error("Could not fetch URL list", e);
                 lastUpdatedEl.textContent = "Error: Could not fetch URL list from server.";
             }
             fetchLatestReport();
@@ -162,18 +162,70 @@
             allTableRows = Array.from(reportBody.getElementsByTagName('tr'));
         }
         
-        function populateFilters(reportData) { /* ... same as previous version ... */ }
-        function applyFilters() { /* ... same as previous version ... */ }
-        async function addNewUrl() { /* ... same as previous version ... */ }
+        function populateFilters(reportData) {
+            if (!reportData) return;
+            const competitors = [...new Set(reportData.map(row => row.competitor))];
+            competitorFilter.innerHTML = '<option>All</option>';
+            competitors.forEach(name => {
+                const option = document.createElement('option');
+                option.value = name;
+                option.textContent = name;
+                competitorFilter.appendChild(option);
+            });
+        }
+        function applyFilters() {
+            const selectedCompetitor = competitorFilter.value;
+            const selectedChange = changeFilter.value;
+
+            allTableRows.forEach(row => {
+                const competitorMatch = selectedCompetitor === 'All' || row.dataset.competitor === selectedCompetitor;
+                const changeMatch = selectedChange === 'All Changes' || (selectedChange === 'Changes Only' && row.dataset.change === 'yes');
+                row.style.display = (competitorMatch && changeMatch) ? '' : 'none';
+            });
+        }
+
+        async function addNewUrl() {
+            const url = newUrlInput.value.trim();
+            if (!url || currentMonitoredUrls.includes(url)) return;
+            
+            currentMonitoredUrls.push(url);
+            newUrlInput.value = '';
+            
+            try {
+                await fetch('/api/update-urls', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ urls: currentMonitoredUrls }),
+                });
+            } catch (e) { console.error("Failed to update URL list:", e); }
+        }
+        
         function exportTableToCSV() { /* ... same as previous version ... */ }
-        async function handleRemoveUrl(event) { /* ... same as previous version ... */ }
+        
+        async function handleRemoveUrl(event) {
+            const removeButton = event.target.closest('.remove-btn');
+            if (!removeButton) return;
+            const rowToRemove = removeButton.closest('tr');
+            const urlToRemove = rowToRemove.dataset.url;
+            
+            currentMonitoredUrls = currentMonitoredUrls.filter(url => url !== urlToRemove);
+            
+            try {
+                 await fetch('/api/update-urls', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ urls: currentMonitoredUrls }),
+                });
+                rowToRemove.remove();
+            } catch(e) { console.error("Failed to update URL list:", e); }
+        }
         
         async function fetchLatestReport() {
             try {
                 const response = await fetch('/api/get-report');
                 if (!response.ok) return;
                 const report = await response.json();
-                if (report.error) throw new Error(report.error);
+                if (report.error) { console.error("Error from get-report API:", report.error); return; }
                 if(report && report.lastUpdated !== lastKnownTimestamp){
                     updateDashboard(report);
                 }
@@ -200,7 +252,7 @@
                     if (scanBtnText.textContent === 'Scan in Progress...') {
                         forceScanBtn.disabled = false;
                         scanBtnText.textContent = 'Force Scan';
-                        lastUpdatedEl.textContent = 'Scan took too long. Please try again.';
+                        lastUpdatedEl.textContent = 'Scan took too long or server is busy. Please try again.';
                     }
                 }, 300000);
 
