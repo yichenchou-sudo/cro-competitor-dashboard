@@ -1,8 +1,14 @@
 {
-    "crons": [
-        {
-            "path": "/api/scanner",
-            "schedule": "0 10 * * *"
-        }
-    ]
+  "crons": [
+    {
+      "path": "/api/scanner",
+      "schedule": "0 10 * * *"
+    }
+  ],
+  "functions": {
+    "api/scanner.js": {
+      "maxDuration": 60
+    }
+  }
 }
+
