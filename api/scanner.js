@@ -10,6 +10,7 @@ const previousScans = new Map();
 async function getAiAnalysis(oldHtml, newHtml) {
   // In Vercel, you would set your GEMINI_API_KEY in the project's Environment Variables settings.
   const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+  if (!GEMINI_API_KEY) return null;
   const API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${GEMINI_API_KEY}`;
 
   const systemPrompt = `You are an expert Conversion Rate Optimization (CRO) specialist.
@@ -50,42 +51,29 @@ async function getAiAnalysis(oldHtml, newHtml) {
   }
 }
 
-// --- FINAL Core Scanner Logic using a Headless Browser with Full Human Emulation ---
+// --- DEFINITIVE Core Scanner Logic using a Specialized Scraping API ---
 async function fetchAndAnalyze(url) {
-  const BROWSERLESS_API_KEY = process.env.BROWSERLESS_API_KEY;
-  if (!BROWSERLESS_API_KEY) {
-      return { content: null, error: "BROWSERLESS_API_KEY is not set in environment variables." };
+  const SCRAPERAPI_KEY = process.env.SCRAPERAPI_KEY;
+  if (!SCRAPERAPI_KEY) {
+      return { content: null, error: "SCRAPERAPI_KEY is not set in environment variables." };
   }
   
-  const BROWSERLESS_API_URL = `https://chrome.browserless.io/content?token=${BROWSERLESS_API_KEY}&stealth&proxy=residential&proxyCountry=gb`;
+  // We construct a URL to ScraperAPI's service, telling it to render JS and use a UK proxy.
+  const scraperApiUrl = `http://api.scraperapi.com?api_key=${SCRAPERAPI_KEY}&url=${encodeURIComponent(url)}&render=true&country_code=gb`;
 
   try {
-    const response = await fetch(BROWSERLESS_API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        url: url,
-        // Add human-like browser characteristics to defeat advanced bot detection
-        setExtraHTTPHeaders: [
-            { name: 'Accept-Language', value: 'en-GB,en;q=0.9' }
-        ],
-        viewport: {
-            width: 1920,
-            height: 1080
-        }
-      }),
-    });
+    const response = await fetch(scraperApiUrl);
 
     if (!response.ok) {
         const errorText = await response.text();
-        console.error(`Browserless Error for ${url}: ${errorText}`);
-        return { content: null, error: `Headless browser error: ${response.status}` };
+        console.error(`ScraperAPI Error for ${url}: ${errorText}`);
+        return { content: null, error: `Scraping API error: ${response.status}` };
     }
     
     const currentHtml = await response.text();
     return { content: currentHtml, error: null };
   } catch (e) {
-    console.error(`Error calling Browserless for ${url}:`, e);
+    console.error(`Error calling ScraperAPI for ${url}:`, e);
     return { content: null, error: e.message };
   }
 }
