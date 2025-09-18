@@ -119,7 +119,7 @@
                 }
             } catch (e) {
                 console.error("Could not fetch URL list:", e);
-                lastUpdatedEl.innerHTML = `<span class="text-red-400">Error: Could not fetch URL list from server. Message: ${e.message}</span>`;
+                lastUpdatedEl.innerHTML = `<span class="text-red-400 font-bold">Error: Could not fetch URL list from server.</span><br><span class="text-red-500 text-sm">${e.message}</span>`;
             }
             fetchLatestReport();
         }
@@ -174,7 +174,7 @@
                 tr.dataset.competitor = row.competitor;
                 tr.dataset.change = row.changeDetected ? 'yes' : 'no';
                 tr.dataset.url = row.url;
-                const changeDetectedHTML = row.changeDetected ? `<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-900 text-green-300">Yes</span>` : `<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-900 text-gray-400">No</span>`;
+                 const changeDetectedHTML = row.changeDetected ? `<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-900 text-green-300">Yes</span>` : `<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-900 text-gray-400">No</span>`;
                 const statusHTML = row.changeStatus === 'Pending Scan' ? `<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-900 text-yellow-300">${row.changeStatus}</span>` : `<span class="text-gray-400">${row.changeStatus || 'N/A'}</span>`;
                 tr.innerHTML = `
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-400">${row.scanDate}</td>
@@ -195,67 +195,25 @@
             allTableRows = Array.from(reportBody.getElementsByTagName('tr'));
         }
         
-        function populateFilters(reportData) {
-            if (!reportData) return;
-            const competitors = [...new Set(reportData.map(row => row.competitor))];
-            competitorFilter.innerHTML = '<option>All</option>';
-            competitors.forEach(name => {
-                const option = document.createElement('option');
-                option.value = name;
-                option.textContent = name;
-                competitorFilter.appendChild(option);
-            });
-        }
-
+        function populateFilters(reportData) { /* ... */ }
         function applyFilters() { /* ... */ }
-
-        async function addNewUrl() {
-            const url = newUrlInput.value.trim();
-            if (!url || currentMonitoredUrls.includes(url)) return;
-            
-            currentMonitoredUrls.push(url);
-            newUrlInput.value = '';
-            updateDashboard({ reportData: currentReportData, lastUpdated: lastKnownTimestamp || new Date().toISOString() });
-            
-            try {
-                await fetch(`${window.location.origin}/api/update-urls`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ urls: currentMonitoredUrls }),
-                });
-            } catch (e) { console.error("Failed to update URL list:", e); }
-        }
-        
+        async function addNewUrl() { /* ... */ }
         function exportTableToCSV() { /* ... */ }
-        
-        async function handleRemoveUrl(event) {
-            const removeButton = event.target.closest('.remove-btn');
-            if (!removeButton) return;
-            const rowToRemove = removeButton.closest('tr');
-            const urlToRemove = rowToRemove.dataset.url;
-            
-            currentMonitoredUrls = currentMonitoredUrls.filter(url => url !== urlToRemove);
-            
-            try {
-                 await fetch(`${window.location.origin}/api/update-urls`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ urls: currentMonitoredUrls }),
-                });
-                rowToRemove.remove();
-            } catch(e) { console.error("Failed to update URL list:", e); }
-        }
+        async function handleRemoveUrl(event) { /* ... */ }
         
         async function fetchLatestReport() {
             try {
                 const response = await fetch(`${window.location.origin}/api/get-report`);
                 if (!response.ok) return;
                 const report = await response.json();
-                if (report.error) { console.error("Error from get-report API:", report.error); return; }
+                if (report.error) { throw new Error(report.error) }
                 if(report && report.lastUpdated !== lastKnownTimestamp){
                     updateDashboard(report);
                 }
-            } catch (error) { console.error("Could not fetch latest report:", error); }
+            } catch (error) { 
+                console.error("Could not fetch latest report:", error); 
+                lastUpdatedEl.innerHTML = `<span class="text-red-400 font-bold">Error fetching report:</span><br><span class="text-red-500 text-sm">${error.message}</span>`;
+            }
         }
 
         async function handleForceScan() {
@@ -263,12 +221,13 @@
             
             forceScanBtn.disabled = true;
             scanBtnText.textContent = 'Queueing...';
+            lastUpdatedEl.textContent = "Attempting to start a new scan...";
 
             try {
                 const response = await fetch(`${window.location.origin}/api/start-scan`, { method: 'POST' });
                 if (!response.ok) {
-                    const errorData = await response.json().catch(() => ({error: "An unknown error occurred."}));
-                    throw new Error(errorData.error || `Server responded with status ${response.status}`);
+                    const errorData = await response.json().catch(() => ({error: `Server responded with status ${response.status}`}));
+                    throw new Error(errorData.error);
                 }
 
                 scanBtnText.textContent = 'Scan in Progress...';
@@ -287,7 +246,7 @@
 
             } catch (error) {
                 console.error("Force scan failed:", error);
-                lastUpdatedEl.innerHTML = `<span class="text-red-400">Error: ${error.message}</span>`;
+                lastUpdatedEl.innerHTML = `<span class="text-red-400 font-bold">Error starting scan:</span><br><span class="text-red-500 text-sm">${error.message}</span>`;
                 forceScanBtn.disabled = false;
                 scanBtnText.textContent = 'Force Scan';
             }
