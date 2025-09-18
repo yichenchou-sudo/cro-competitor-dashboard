@@ -50,14 +50,13 @@ async function getAiAnalysis(oldHtml, newHtml) {
   }
 }
 
-// --- UPGRADED Core Scanner Logic using a Headless Browser with Proxies ---
+// --- FINAL Core Scanner Logic using a Headless Browser with Full Human Emulation ---
 async function fetchAndAnalyze(url) {
   const BROWSERLESS_API_KEY = process.env.BROWSERLESS_API_KEY;
   if (!BROWSERLESS_API_KEY) {
       return { content: null, error: "BROWSERLESS_API_KEY is not set in environment variables." };
   }
   
-  // By adding the `&stealth&proxy=residential&proxyCountry=gb` parameters, we make the request look much more human.
   const BROWSERLESS_API_URL = `https://chrome.browserless.io/content?token=${BROWSERLESS_API_KEY}&stealth&proxy=residential&proxyCountry=gb`;
 
   try {
@@ -66,8 +65,14 @@ async function fetchAndAnalyze(url) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ 
         url: url,
-        // We can add logic here to wait for specific elements if needed
-        // waitFor: '.form-widget' 
+        // Add human-like browser characteristics to defeat advanced bot detection
+        setExtraHTTPHeaders: [
+            { name: 'Accept-Language', value: 'en-GB,en;q=0.9' }
+        ],
+        viewport: {
+            width: 1920,
+            height: 1080
+        }
       }),
     });
 
@@ -77,7 +82,6 @@ async function fetchAndAnalyze(url) {
         return { content: null, error: `Headless browser error: ${response.status}` };
     }
     
-    // This HTML is fully rendered after JavaScript has run
     const currentHtml = await response.text();
     return { content: currentHtml, error: null };
   } catch (e) {
