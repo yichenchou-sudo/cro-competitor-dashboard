@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Competitor CRO Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #111827; }
+        .table-container { max-height: 70vh; overflow-y: auto; }
+        thead th { position: sticky; top: 0; background-color: #1f2937; z-index: 10;}
+        .tooltip { position: relative; display: inline-block; }
+        .tooltip .tooltiptext { visibility: hidden; width: 250px; background-color: #374151; color: #fff; text-align: left; border-radius: 6px; padding: 10px; position: absolute; z-index: 1; bottom: 125%; left: 50%; margin-left: -125px; opacity: 0; transition: opacity 0.3s; font-weight: 400; font-size: 0.875rem; }
+        .tooltip:hover .tooltiptext { visibility: visible; opacity: 1; }
+        .loader { border: 4px solid #f3f3f3; border-top: 4px solid #4f46e5; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 20px auto; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="text-gray-200 p-4 sm:p-6 lg:p-8">
+
+    <div class="max-w-7xl mx-auto">
+        <!-- Header -->
+        <div class="mb-6">
+            <h1 class="text-3xl font-bold text-white">AI Competitor CRO Dashboard</h1>
+            <p id="last-updated" class="text-gray-400 mt-1">Fetching latest data...</p>
+        </div>
+
+        <!-- Add URL Section -->
+        <div class="mb-4 p-4 bg-gray-800 rounded-lg">
+            <h3 class="text-lg font-medium text-white mb-2">Monitor a New URL</h3>
+            <div class="flex flex-wrap gap-4 items-end">
+                <div class="flex-grow">
+                    <label for="new-url-input" class="block text-sm font-medium text-gray-300">Enter full URL to monitor</label>
+                    <input type="url" id="new-url-input" placeholder="https://www.newcompetitor.com/features" class="mt-1 block w-full pl-3 pr-4 py-2 text-base bg-gray-700 border-gray-600 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md">
+                </div>
+                <button id="add-url-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-md transition-colors duration-200">Add & Scan</button>
+            </div>
+            <p id="success-message" class="text-green-400 text-sm mt-2 hidden">URL added successfully! It will be included in the next scan.</p>
+        </div>
+
+        <!-- Filters -->
+        <div class="flex flex-wrap gap-4 mb-4 p-4 bg-gray-800 rounded-lg">
+            <div>
+                <label for="competitor-filter" class="block text-sm font-medium text-gray-300">Filter by Competitor</label>
+                <select id="competitor-filter" class="mt-1 block w-full pl-3 pr-10 py-2 text-base bg-gray-700 border-gray-600 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md">
+                    <option>All</option>
+                </select>
+            </div>
+            <div>
+                <label for="change-filter" class="block text-sm font-medium text-gray-300">Filter by Change</label>
+                <select id="change-filter" class="mt-1 block w-full pl-3 pr-10 py-2 text-base bg-gray-700 border-gray-600 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md">
+                    <option>All Changes</option>
+                    <option>Changes Only</option>
+                </select>
+            </div>
+            <div class="self-end">
+                 <button id="export-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-md transition-colors duration-200 h-full">Export CSV</button>
+            </div>
+        </div>
+        
+        <!-- Report Table -->
+        <div class="table-container bg-gray-800 rounded-lg shadow">
+            <table class="min-w-full divide-y divide-gray-700">
+                <thead class="bg-gray-800">
+                    <tr>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Scan Date</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Competitor</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Change Detected?</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Change Status</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Change Category</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Summary & Insights</th>
+                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="report-body" class="bg-gray-900 divide-y divide-gray-800">
+                    <tr>
+                        <td colspan="7" class="text-center p-8">
+                            <div class="loader"></div>
+                            <p>Loading latest competitor report...</p>
+                        </td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        // --- ALL UI ELEMENTS ---
+        const lastUpdatedEl = document.getElementById('last-updated');
+        const reportBody = document.getElementById('report-body');
+        const competitorFilter = document.getElementById('competitor-filter');
+        const changeFilter = document.getElementById('change-filter');
+        const newUrlInput = document.getElementById('new-url-input');
+        const addUrlBtn = document.getElementById('add-url-btn');
+        const successMessage = document.getElementById('success-message');
+        const exportBtn = document.getElementById('export-btn');
+        
+        let allRows = []; // Master list of all table rows
+
+        // --- MOCK DATA (Simulates the API/Engine) ---
+        const mockApiData = {
+            lastUpdated: new Date().toISOString(),
+            reportData: [
+                {
+                    scanDate: "2025-09-17",
+                    competitor: "Compare Business",
+                    url: "https://comparedbusiness.com/uk/digital-marketing/",
+                    changeDetected: true,
+                    changeStatus: "Live A/B Test",
+                    changeCategory: "Headline Test",
+                    summary: `New headline detected: "Get a Digital Marketing Quote from the UK's Top Agencies"...`,
+                    insight: `Analysis: They are testing a more benefit-driven and authority-focused headline. The phrase "Top Agencies" adds social proof and may appeal to users looking for quality over just a low price.`,
+                    hypothesis: `Based on the observation that authority increases trust, we predict that changing our headline to emphasize the quality of our partners (e.g., 'Get Matched with Vetted UK Marketing Experts') will increase form submissions by 5%.`
+                },
+                {
+                    scanDate: "2025-09-17",
+                    competitor: "Commercial Expert",
+                    url: "https://commercialexperts.com/uk/digital-marketing/",
+                    changeDetected: false,
+                },
+                {
+                    scanDate: "2025-09-16",
+                    competitor: "DigitalMarketingCosts",
+                    url: "https://digitalmarketingcosts.co.uk/",
+                    changeDetected: true,
+                    changeStatus: "Permanent Rollout",
+                    changeCategory: "Form Optimization",
+                    summary: `Optional 'Project Start Date' field added...`,
+                    insight: `They are attempting to gather more lead qualification data upfront.`,
+                    hypothesis: `We predict that adding an optional 'Project Start Date' field to our form will increase our lead-to-qualified-meeting rate.`
+                },
+            ]
+        };
+
+        // --- EVENT LISTENERS ---
+        document.addEventListener('DOMContentLoaded', () => {
+            fetchReportData();
+        });
+        competitorFilter.addEventListener('change', applyFilters);
+        changeFilter.addEventListener('change', applyFilters);
+        addUrlBtn.addEventListener('click', addNewUrl);
+        exportBtn.addEventListener('click', exportTableToCSV);
+        reportBody.addEventListener('click', handleRemoveUrl);
+
+
+        // --- CORE FUNCTIONS ---
+
+        function fetchReportData() {
+            // Simulate an API call by using the mock data object.
+            // A setTimeout simulates the delay of a real network request.
+            new Promise(resolve => {
+                setTimeout(() => resolve(mockApiData), 500); 
+            }).then(data => {
+                renderReport(data.reportData);
+                populateFilters(data.reportData);
+                const updatedDate = new Date(data.lastUpdated).toLocaleString('en-GB', { dateStyle: 'long', timeStyle: 'short'});
+                lastUpdatedEl.textContent = `Last Updated: ${updatedDate} BST`;
+            }).catch(error => {
+                console.error("Failed to process report data:", error);
+                reportBody.innerHTML = `<tr><td colspan="7" class="text-center p-8 text-red-400">Failed to load report. Please check the console for details.</td></tr>`;
+            });
+        }
+
+        function renderReport(reportData) {
+            if (!reportData || reportData.length === 0) {
+                reportBody.innerHTML = `<tr><td colspan="7" class="text-center p-8">No data available.</td></tr>`;
+                return;
+            }
+
+            reportBody.innerHTML = ''; // Clear loader
+            reportData.forEach(row => {
+                const tr = document.createElement('tr');
+                tr.dataset.competitor = row.competitor;
+                tr.dataset.change = row.changeDetected ? 'yes' : 'no';
+
+                const changeDetectedHTML = row.changeDetected 
+                    ? `<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-900 text-green-300">Yes</span>`
+                    : `<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-900 text-gray-400">No</span>`;
+
+                tr.innerHTML = `
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-400">${row.scanDate}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-white"><a href="${new URL(row.url).origin}" target="_blank" class="text-indigo-400 hover:text-indigo-300">${row.competitor}</a></td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm">${changeDetectedHTML}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm">${row.changeStatus || 'N/A'}</td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm">${row.changeCategory || 'N/A'}</td>
+                    <td class="px-6 py-4 text-sm text-gray-300">
+                        ${row.changeDetected ? `
+                        <div class="tooltip">
+                            <span class="font-semibold text-white">${row.summary || 'Details available.'}</span>
+                            <span class="tooltiptext">
+                                 <strong class="block text-white">Insight:</strong> ${row.insight}<br><br>
+                                 <strong class="block text-white">Hypothesis:</strong> ${row.hypothesis}
+                            </span>
+                        </div>` : 'No significant changes detected.'}
+                    </td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm text-center">
+                        <button class="remove-btn text-gray-500 hover:text-red-500 transition-colors duration-200" title="Remove URL">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                        </button>
+                    </td>
+                `;
+                reportBody.appendChild(tr);
+            });
+            allRows = Array.from(reportBody.getElementsByTagName('tr'));
+        }
+        
+        function populateFilters(reportData) {
+            const competitors = [...new Set(reportData.map(row => row.competitor))];
+            competitorFilter.innerHTML = '<option>All</option>'; // Reset
+            competitors.forEach(name => {
+                const option = document.createElement('option');
+                option.value = name;
+                option.textContent = name;
+                competitorFilter.appendChild(option);
+            });
+        }
+        
+        function applyFilters() {
+            const selectedCompetitor = competitorFilter.value;
+            const selectedChange = changeFilter.value;
+
+            allRows.forEach(row => {
+                const competitorMatch = selectedCompetitor === 'All' || row.dataset.competitor === selectedCompetitor;
+                const changeMatch = selectedChange === 'All Changes' || (selectedChange === 'Changes Only' && row.dataset.change === 'yes');
+                
+                row.style.display = (competitorMatch && changeMatch) ? '' : 'none';
+            });
+        }
+
+        function addNewUrl() {
+            const url = newUrlInput.value.trim();
+            if (!url) { newUrlInput.focus(); return; }
+
+            const today = new Date().toISOString().split('T')[0].replace('2024','2025');
+            let competitorName = 'Unknown', baseUrl = '#';
+            try {
+                const urlObject = new URL(url);
+                baseUrl = urlObject.origin;
+                let hostname = urlObject.hostname.replace('www.', '');
+                competitorName = hostname.charAt(0).toUpperCase() + hostname.slice(1).split('.')[0];
+            } catch (e) { competitorName = "Invalid URL"; }
+            
+            if (![...competitorFilter.options].some(opt => opt.value === competitorName)) {
+                const newOption = document.createElement('option');
+                newOption.value = competitorName;
+                newOption.textContent = competitorName;
+                competitorFilter.appendChild(newOption);
+            }
+
+            const newRow = document.createElement('tr');
+            newRow.dataset.competitor = competitorName;
+            newRow.dataset.change = "no";
+            newRow.innerHTML = `
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-400">${today}</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-white"><a href="${baseUrl}" target="_blank" class="text-indigo-400 hover:text-indigo-300">${competitorName}</a></td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm"><span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-blue-900 text-blue-300">New</span></td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-400">Pending Scan</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">N/A</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-400">URL added. Awaiting first full scan.</td>
+                <td class="px-6 py-4 whitespace-nowrap text-sm text-center">
+                    <button class="remove-btn text-gray-500 hover:text-red-500 transition-colors duration-200" title="Remove URL">
+                        <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                    </button>
+                </td>
+            `;
+            
+            reportBody.prepend(newRow);
+            allRows.unshift(newRow);
+            newUrlInput.value = '';
+            successMessage.classList.remove('hidden');
+            setTimeout(() => successMessage.classList.add('hidden'), 3000);
+        }
+        
+        function exportTableToCSV() {
+            const headers = Array.from(document.querySelectorAll("thead th")).map(th => th.textContent.trim()).slice(0, -1); // Exclude Actions
+            let csvContent = headers.join(',') + '\n';
+
+            allRows.filter(row => row.style.display !== 'none').forEach(row => {
+                const cells = row.querySelectorAll('td');
+                const rowData = [
+                    cells[0].innerText, // Scan Date
+                    cells[1].innerText, // Competitor
+                    cells[2].innerText, // Change Detected?
+                    cells[3].innerText, // Change Status
+                    cells[4].innerText, // Change Category
+                ];
+                
+                let summaryText = cells[5].innerText;
+                const tooltip = cells[5].querySelector('.tooltiptext');
+                if (tooltip) {
+                    summaryText = Array.from(tooltip.childNodes)
+                        .map(node => node.textContent.trim().replace(/"/g, '""'))
+                        .join(' | ');
+                }
+                rowData.push(`"${summaryText}"`);
+                
+                csvContent += rowData.join(',') + '\n';
+            });
+
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            const url = URL.createObjectURL(blob);
+            link.setAttribute("href", url);
+            link.setAttribute("download", "competitor_report.csv");
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        function handleRemoveUrl(event) {
+            const removeButton = event.target.closest('.remove-btn');
+            if (!removeButton) return;
+            removeButton.closest('tr').remove();
+            allRows = Array.from(reportBody.getElementsByTagName('tr'));
+            // Note: Does not remove from filter in this version for simplicity
+        }
+
+    </script>
+</body>
+</html>
+
