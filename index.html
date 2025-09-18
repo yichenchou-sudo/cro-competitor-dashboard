@@ -159,7 +159,7 @@
         }
 
         function renderReport(reportData) {
-             if (!reportData || reportData.length === 0) {
+            if (!reportData || reportData.length === 0) {
                  if(currentMonitoredUrls.length > 0) {
                     reportBody.innerHTML = `<tr><td colspan="8" class="text-center p-8">Scan results are not yet available. Click 'Force Scan'.</td></tr>`;
                 } else {
@@ -195,11 +195,56 @@
             allTableRows = Array.from(reportBody.getElementsByTagName('tr'));
         }
         
-        function populateFilters(reportData) { /* ... */ }
+        function populateFilters(reportData) {
+            if (!reportData) return;
+            const competitors = [...new Set(reportData.map(row => row.competitor))];
+            competitorFilter.innerHTML = '<option>All</option>';
+            competitors.forEach(name => {
+                const option = document.createElement('option');
+                option.value = name;
+                option.textContent = name;
+                competitorFilter.appendChild(option);
+            });
+        }
+
         function applyFilters() { /* ... */ }
-        async function addNewUrl() { /* ... */ }
+
+        async function addNewUrl() {
+            const url = newUrlInput.value.trim();
+            if (!url || currentMonitoredUrls.includes(url)) return;
+            
+            currentMonitoredUrls.push(url);
+            newUrlInput.value = '';
+            updateDashboard({ reportData: currentReportData, lastUpdated: lastKnownTimestamp || new Date().toISOString() });
+            
+            try {
+                await fetch(`${window.location.origin}/api/update-urls`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ urls: currentMonitoredUrls }),
+                });
+            } catch (e) { console.error("Failed to update URL list:", e); }
+        }
+        
         function exportTableToCSV() { /* ... */ }
-        async function handleRemoveUrl(event) { /* ... */ }
+        
+        async function handleRemoveUrl(event) {
+            const removeButton = event.target.closest('.remove-btn');
+            if (!removeButton) return;
+            const rowToRemove = removeButton.closest('tr');
+            const urlToRemove = rowToRemove.dataset.url;
+            
+            currentMonitoredUrls = currentMonitoredUrls.filter(url => url !== urlToRemove);
+            
+            try {
+                 await fetch(`${window.location.origin}/api/update-urls`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ urls: currentMonitoredUrls }),
+                });
+                rowToRemove.remove();
+            } catch(e) { console.error("Failed to update URL list:", e); }
+        }
         
         async function fetchLatestReport() {
             try {
@@ -221,7 +266,6 @@
             
             forceScanBtn.disabled = true;
             scanBtnText.textContent = 'Queueing...';
-            lastUpdatedEl.textContent = "Attempting to start a new scan...";
 
             try {
                 const response = await fetch(`${window.location.origin}/api/start-scan`, { method: 'POST' });
