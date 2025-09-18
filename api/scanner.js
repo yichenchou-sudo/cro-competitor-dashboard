@@ -1,10 +1,8 @@
+import { kv } from '@vercel/kv';
+
 export const config = {
   runtime: 'edge',
 };
-
-// IMPORTANT: In a real production app, you would use a persistent database like Vercel KV, Upstash, or Supabase
-// to store previous scans. This in-memory Map will reset every time the serverless function restarts.
-const previousScans = new Map();
 
 // --- Gemini AI Analysis Function ---
 async function getAiAnalysis(oldHtml, newHtml) {
@@ -58,7 +56,6 @@ async function fetchAndAnalyze(url) {
       return { content: null, error: "SCRAPERAPI_KEY is not set in environment variables." };
   }
   
-  // We construct a URL to ScraperAPI's service, telling it to render JS and use a UK proxy.
   const scraperApiUrl = `http://api.scraperapi.com?api_key=${SCRAPERAPI_KEY}&url=${encodeURIComponent(url)}&render=true&country_code=gb`;
 
   try {
@@ -101,6 +98,9 @@ export default async function handler(request) {
   const today = new Date().toISOString().split('T')[0].replace('2024','2025');
 
   for (const url of urls) {
+    // A unique key for each URL to store in the database
+    const dbKey = `scan:${encodeURIComponent(url)}`;
+    
     const { content: currentHtml, error } = await fetchAndAnalyze(url);
     const competitor = new URL(url).hostname.replace('www.', '');
     const subcategory = getSubcategoryFromUrl(url);
@@ -110,7 +110,8 @@ export default async function handler(request) {
       continue;
     }
 
-    const previousHtml = previousScans.get(url);
+    // Get the previous scan from the persistent KV database
+    const previousHtml = await kv.get(dbKey);
     const changeDetected = previousHtml && currentHtml !== previousHtml;
 
     if (changeDetected) {
@@ -128,7 +129,8 @@ export default async function handler(request) {
       reportData.push({ scanDate: today, competitor, url, subcategory, changeDetected: false, changeStatus: previousHtml ? "No Change" : "Baseline Scan" });
     }
     
-    previousScans.set(url, currentHtml);
+    // Save the new scan to the persistent KV database for the next run
+    await kv.set(dbKey, currentHtml);
   }
 
   return new Response(JSON.stringify({
