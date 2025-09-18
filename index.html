@@ -110,40 +110,17 @@
         let allRows = []; 
         let currentReportData = [];
 
-        // --- MOCK DATA (Simulates the API/Engine) ---
+        // --- MOCK DATA for initial load ---
         const initialMockData = {
             lastUpdated: new Date().toISOString(),
             reportData: [
-                {
-                    scanDate: "2025-09-17",
-                    competitor: "Compare Business",
-                    url: "https://comparedbusiness.com/uk/digital-marketing/",
-                    subcategory: "Digital Marketing",
-                    changeDetected: true,
-                    changeStatus: "Live A/B Test",
-                    changeCategory: "Headline Test",
-                    summary: `New headline detected: "Get a Digital Marketing Quote from the UK's Top Agencies"...`,
-                    insight: `They are testing a more benefit-driven and authority-focused headline. The phrase "Top Agencies" adds social proof and may appeal to users looking for quality over just a low price.`,
-                    hypothesis: `Based on the observation that authority increases trust, we predict that changing our headline to emphasize the quality of our partners (e.g., 'Get Matched with Vetted UK Marketing Experts') will increase form submissions by 5%.`
-                },
-                {
+                 {
                     scanDate: "2025-09-17",
                     competitor: "Commercial Expert",
                     url: "https://commercialexperts.com/uk/digital-marketing/",
                     subcategory: "Digital Marketing",
                     changeDetected: false,
-                },
-                {
-                    scanDate: "2025-09-16",
-                    competitor: "DigitalMarketingCosts",
-                    url: "https://digitalmarketingcosts.co.uk/",
-                    subcategory: "Digital Marketing",
-                    changeDetected: true,
-                    changeStatus: "Permanent Rollout",
-                    changeCategory: "Form Optimization",
-                    summary: `Optional 'Project Start Date' field added...`,
-                    insight: `They are attempting to gather more lead qualification data upfront.`,
-                    hypothesis: `We predict that adding an optional 'Project Start Date' field to our form will increase our lead-to-qualified-meeting rate.`
+                    changeStatus: "No Change",
                 },
             ]
         };
@@ -226,7 +203,7 @@
                                     <li><strong>Hypothesis:</strong> ${row.hypothesis}</li>
                                 </ul>
                             </span>
-                        </div>` : (row.changeStatus === 'Pending Scan' ? 'Awaiting first scan...' : 'No significant changes detected.')}
+                        </div>` : (row.changeStatus === 'Pending Scan' ? 'Awaiting first scan...' : (row.summary || 'No significant changes detected.'))}
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-center">
                         <button class="remove-btn text-gray-500 hover:text-red-500 transition-colors duration-200" title="Remove URL">
@@ -355,24 +332,7 @@
             populateFilters(currentReportData);
         }
 
-        function simulateScan(rowToScan) {
-            const hasChange = Math.random() < 0.5;
-            rowToScan.changeDetected = hasChange;
-            rowToScan.scanDate = new Date().toISOString().split('T')[0].replace('2024','2025');
-
-            if (hasChange) {
-                rowToScan.changeStatus = "Permanent Rollout";
-                rowToScan.changeCategory = "Content Update";
-                rowToScan.summary = "Minor text change in the footer detected.";
-                rowToScan.insight = "This appears to be a routine copy update with low strategic impact.";
-                rowToScan.hypothesis = "N/A for minor changes.";
-            } else {
-                 rowToScan.changeStatus = "No Change";
-            }
-            return rowToScan;
-        }
-
-        function handleForceScan() {
+        async function handleForceScan() {
              if (forceScanBtn.disabled) return;
             
             forceScanBtn.disabled = true;
@@ -380,27 +340,41 @@
             
             reportBody.innerHTML = `<tr><td colspan="8" class="text-center p-8"><div class="loader"></div><p>Performing live scan now...</p></td></tr>`;
             
-            setTimeout(() => {
-                currentReportData = currentReportData.map(row => {
-                    if (row.changeStatus === 'Pending Scan') {
-                        return simulateScan(row);
-                    }
-                    return row;
+            const urlsToScan = currentReportData.map(row => row.url);
+
+            try {
+                // This is the REAL API call to the Vercel backend
+                const response = await fetch('/api/scanner', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ urls: urlsToScan }),
                 });
 
-                const newScanTime = new Date().toISOString();
+                if (!response.ok) {
+                    throw new Error(`API Error: ${response.statusText}`);
+                }
+
+                const newData = await response.json();
                 
-                const newData = {
-                    lastUpdated: newScanTime,
-                    reportData: currentReportData
-                };
+                // Keep existing data for URLs not in the new scan (if any)
+                const scannedUrls = new Set(newData.reportData.map(r => r.url));
+                const existingUnscannedData = currentReportData.filter(r => !scannedUrls.has(r.url));
+                
+                const finalData = {
+                    lastUpdated: newData.lastUpdated,
+                    reportData: [...newData.reportData, ...existingUnscannedData]
+                }
 
-                localStorage.setItem('competitorReportData', JSON.stringify(newData));
-                updateDashboard(newData);
+                localStorage.setItem('competitorReportData', JSON.stringify(finalData));
+                updateDashboard(finalData);
 
+            } catch (error) {
+                console.error("Force scan failed:", error);
+                reportBody.innerHTML = `<tr><td colspan="8" class="text-center p-8 text-red-400">Scan failed. Please check the browser console for details.</td></tr>`;
+            } finally {
                 forceScanBtn.disabled = false;
                 scanBtnText.textContent = 'Force Scan';
-            }, 1500);
+            }
         }
 
     </script>
