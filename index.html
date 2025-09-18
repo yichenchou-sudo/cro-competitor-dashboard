@@ -159,16 +159,24 @@
 
 
         // --- CORE FUNCTIONS ---
+        function saveDataToLocalStorage() {
+            const dataToSave = {
+                lastUpdated: new Date().toISOString(),
+                reportData: currentReportData
+            };
+            localStorage.setItem('competitorReportData', JSON.stringify(dataToSave));
+        }
+
         function loadInitialData() {
-            // In a real app, this would be a fetch call. Here we use the mock data.
-             return new Promise(resolve => {
-                setTimeout(() => resolve(initialMockData), 500); 
-            }).then(data => {
-                updateDashboard(data);
-            }).catch(error => {
-                console.error("Failed to process report data:", error);
-                reportBody.innerHTML = `<tr><td colspan="8" class="text-center p-8 text-red-400">Failed to load report. Please check the console for details.</td></tr>`;
-            });
+            const savedData = localStorage.getItem('competitorReportData');
+            let dataToLoad;
+            if (savedData) {
+                dataToLoad = JSON.parse(savedData);
+            } else {
+                dataToLoad = initialMockData;
+                localStorage.setItem('competitorReportData', JSON.stringify(initialMockData));
+            }
+            updateDashboard(dataToLoad);
         }
 
         function updateDashboard(data) {
@@ -182,7 +190,7 @@
 
         function renderReport(reportData) {
             if (!reportData || reportData.length === 0) {
-                reportBody.innerHTML = `<tr><td colspan="8" class="text-center p-8">No data available.</td></tr>`;
+                reportBody.innerHTML = `<tr><td colspan="8" class="text-center p-8">No data available. Add a URL to begin.</td></tr>`;
                 return;
             }
 
@@ -191,7 +199,7 @@
                 const tr = document.createElement('tr');
                 tr.dataset.competitor = row.competitor;
                 tr.dataset.change = row.changeDetected ? 'yes' : 'no';
-                tr.dataset.url = row.url; // Add full URL for identification
+                tr.dataset.url = row.url;
 
                 const changeDetectedHTML = row.changeDetected 
                     ? `<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-900 text-green-300">Yes</span>`
@@ -266,7 +274,6 @@
                 let hostname = urlObject.hostname.replace('www.', '');
                 competitorName = hostname.charAt(0).toUpperCase() + hostname.slice(1).split('.')[0];
                 
-                // Auto-detect subcategory from URL path
                 const pathSegments = urlObject.pathname.split('/').filter(Boolean);
                 if (pathSegments.length > 0) {
                     const meaningfulSegment = pathSegments.find(s => s.length > 3 && s !== 'uk') || pathSegments[0];
@@ -292,6 +299,7 @@
             };
             
             currentReportData.unshift(newRow);
+            saveDataToLocalStorage();
             renderReport(currentReportData);
             
             newUrlInput.value = '';
@@ -339,19 +347,16 @@
             const rowToRemove = removeButton.closest('tr');
             
             const urlToRemove = rowToRemove.dataset.url;
-            const dateToRemove = rowToRemove.querySelector('td').innerText;
             
-            currentReportData = currentReportData.filter(row => {
-                 return !(row.url === urlToRemove && row.scanDate === dateToRemove);
-            });
+            currentReportData = currentReportData.filter(row => row.url !== urlToRemove);
             
+            saveDataToLocalStorage();
             renderReport(currentReportData);
             populateFilters(currentReportData);
         }
 
         function simulateScan(rowToScan) {
-            // This function simulates a scan for a single URL.
-            const hasChange = Math.random() < 0.5; // 50% chance of a change
+            const hasChange = Math.random() < 0.5;
             rowToScan.changeDetected = hasChange;
             rowToScan.scanDate = new Date().toISOString().split('T')[0].replace('2024','2025');
 
@@ -375,8 +380,8 @@
             
             reportBody.innerHTML = `<tr><td colspan="8" class="text-center p-8"><div class="loader"></div><p>Performing live scan now...</p></td></tr>`;
             
-            setTimeout(() => { // Simulate network delay
-                const newReportData = currentReportData.map(row => {
+            setTimeout(() => {
+                currentReportData = currentReportData.map(row => {
                     if (row.changeStatus === 'Pending Scan') {
                         return simulateScan(row);
                     }
@@ -385,10 +390,13 @@
 
                 const newScanTime = new Date().toISOString();
                 
-                updateDashboard({
+                const newData = {
                     lastUpdated: newScanTime,
-                    reportData: newReportData
-                });
+                    reportData: currentReportData
+                };
+
+                localStorage.setItem('competitorReportData', JSON.stringify(newData));
+                updateDashboard(newData);
 
                 forceScanBtn.disabled = false;
                 scanBtnText.textContent = 'Force Scan';
@@ -398,3 +406,4 @@
     </script>
 </body>
 </html>
+
