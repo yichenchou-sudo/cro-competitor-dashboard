@@ -101,24 +101,26 @@
         forceScanBtn.addEventListener('click', handleForceScan);
 
         async function loadInitialData() {
+            const cachedReport = localStorage.getItem('competitorReport');
+            if(cachedReport) updateDashboard(JSON.parse(cachedReport));
+
             try {
-                const urlsResponse = await fetch('/api/get-urls');
-                const urlsData = await urlsResponse.json();
-                if (urlsData.error) throw new Error(urlsData.error);
-                currentMonitoredUrls = urlsData.urls || [];
+                const response = await fetch(`${window.location.origin}/api/get-urls`);
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`Server responded with ${response.status}: ${errorText}`);
+                }
+                const data = await response.json();
+                if (data.error) throw new Error(data.error);
+
+                currentMonitoredUrls = data.urls || [];
+                if (currentMonitoredUrls.length === 0 && (!cachedReport || JSON.parse(cachedReport).reportData.length === 0)) {
+                     reportBody.innerHTML = `<tr><td colspan="8" class="text-center p-8">No URLs are being monitored. Add one to begin.</td></tr>`;
+                }
             } catch (e) {
                 console.error("Could not fetch URL list:", e);
-                lastUpdatedEl.textContent = "Error: Could not fetch URL list from server.";
-                return;
+                lastUpdatedEl.innerHTML = `<span class="text-red-400">Error: Could not fetch URL list from server. Message: ${e.message}</span>`;
             }
-
-            const cachedReport = localStorage.getItem('competitorReport');
-            if (cachedReport) {
-                updateDashboard(JSON.parse(cachedReport));
-            } else if (currentMonitoredUrls.length === 0) {
-                 reportBody.innerHTML = `<tr><td colspan="8" class="text-center p-8">No URLs are being monitored. Add one to begin.</td></tr>`;
-            }
-            
             fetchLatestReport();
         }
 
@@ -145,7 +147,6 @@
             });
 
             const combinedReportData = [...pendingRows, ...latestReportData];
-            
             currentReportData = combinedReportData;
             
             renderReport(currentReportData);
@@ -173,7 +174,7 @@
                 tr.dataset.competitor = row.competitor;
                 tr.dataset.change = row.changeDetected ? 'yes' : 'no';
                 tr.dataset.url = row.url;
-                 const changeDetectedHTML = row.changeDetected ? `<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-900 text-green-300">Yes</span>` : `<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-900 text-gray-400">No</span>`;
+                const changeDetectedHTML = row.changeDetected ? `<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-900 text-green-300">Yes</span>` : `<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-900 text-gray-400">No</span>`;
                 const statusHTML = row.changeStatus === 'Pending Scan' ? `<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-900 text-yellow-300">${row.changeStatus}</span>` : `<span class="text-gray-400">${row.changeStatus || 'N/A'}</span>`;
                 tr.innerHTML = `
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-400">${row.scanDate}</td>
@@ -205,49 +206,27 @@
                 competitorFilter.appendChild(option);
             });
         }
-        function applyFilters() { /* ... same as previous version ... */ }
+
+        function applyFilters() { /* ... */ }
 
         async function addNewUrl() {
             const url = newUrlInput.value.trim();
-            if (!url || currentMonitoredUrls.includes(url)) {
-                newUrlInput.value = '';
-                return;
-            };
+            if (!url || currentMonitoredUrls.includes(url)) return;
             
             currentMonitoredUrls.push(url);
             newUrlInput.value = '';
-
-            const today = new Date().toISOString().split('T')[0].replace('2024','2025');
-            let competitorName = 'Unknown', subcategory = 'General';
+            updateDashboard({ reportData: currentReportData, lastUpdated: lastKnownTimestamp || new Date().toISOString() });
+            
             try {
-                const urlObject = new URL(url);
-                let hostname = urlObject.hostname.replace('www.', '');
-                competitorName = hostname.charAt(0).toUpperCase() + hostname.slice(1).split('.')[0];
-                const pathSegments = urlObject.pathname.split('/').filter(Boolean);
-                if (pathSegments.length > 0) {
-                    const meaningfulSegment = pathSegments.find(s => s.length > 3 && s !== 'uk') || pathSegments[0];
-                    subcategory = meaningfulSegment.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-                }
-            } catch (e) { /* Invalid URL */ }
-
-            const newRowData = { scanDate: today, competitor: competitorName, url: url, subcategory: subcategory, changeDetected: false, changeStatus: 'Pending Scan', summary: 'Awaiting first scan...' };
-            currentReportData.unshift(newRowData);
-            renderReport(currentReportData);
-            populateFilters(currentReportData);
-
-            try {
-                await fetch('/api/update-urls', {
+                await fetch(`${window.location.origin}/api/update-urls`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ urls: currentMonitoredUrls }),
                 });
-            } catch (e) { 
-                console.error("Failed to update URL list:", e);
-                // Optionally, add error handling to remove the optimistic UI update
-            }
+            } catch (e) { console.error("Failed to update URL list:", e); }
         }
         
-        function exportTableToCSV() { /* ... same as previous version ... */ }
+        function exportTableToCSV() { /* ... */ }
         
         async function handleRemoveUrl(event) {
             const removeButton = event.target.closest('.remove-btn');
@@ -258,20 +237,18 @@
             currentMonitoredUrls = currentMonitoredUrls.filter(url => url !== urlToRemove);
             
             try {
-                 await fetch('/api/update-urls', {
+                 await fetch(`${window.location.origin}/api/update-urls`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ urls: currentMonitoredUrls }),
                 });
                 rowToRemove.remove();
-                currentReportData = currentReportData.filter(row => row.url !== urlToRemove);
-                populateFilters(currentReportData);
             } catch(e) { console.error("Failed to update URL list:", e); }
         }
         
         async function fetchLatestReport() {
             try {
-                const response = await fetch('/api/get-report');
+                const response = await fetch(`${window.location.origin}/api/get-report`);
                 if (!response.ok) return;
                 const report = await response.json();
                 if (report.error) { console.error("Error from get-report API:", report.error); return; }
@@ -288,9 +265,9 @@
             scanBtnText.textContent = 'Queueing...';
 
             try {
-                const response = await fetch('/api/start-scan', { method: 'POST' });
+                const response = await fetch(`${window.location.origin}/api/start-scan`, { method: 'POST' });
                 if (!response.ok) {
-                    const errorData = await response.json();
+                    const errorData = await response.json().catch(() => ({error: "An unknown error occurred."}));
                     throw new Error(errorData.error || `Server responded with status ${response.status}`);
                 }
 
@@ -310,7 +287,7 @@
 
             } catch (error) {
                 console.error("Force scan failed:", error);
-                lastUpdatedEl.textContent = `Error: ${error.message}`;
+                lastUpdatedEl.innerHTML = `<span class="text-red-400">Error: ${error.message}</span>`;
                 forceScanBtn.disabled = false;
                 scanBtnText.textContent = 'Force Scan';
             }
