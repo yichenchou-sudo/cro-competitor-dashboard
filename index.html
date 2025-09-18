@@ -211,7 +211,7 @@
 
                 tr.innerHTML = `
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-400">${row.scanDate}</td>
-                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-white"><a href="${new URL(row.url).origin}" target="_blank" class="text-indigo-400 hover:text-indigo-300">${row.competitor}</a></td>
+                    <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-white"><a href="${row.url}" target="_blank" class="text-indigo-400 hover:text-indigo-300">${row.competitor}</a></td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-400">${row.subcategory || 'N/A'}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm">${changeDetectedHTML}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm">${statusHTML}</td>
