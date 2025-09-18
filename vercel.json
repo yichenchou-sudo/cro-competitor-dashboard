@@ -1,14 +1,14 @@
 {
+  "functions": {
+    "api/process-scan.js": {
+      "maxDuration": 300
+    }
+  },
   "crons": [
     {
-      "path": "/api/scanner",
+      "path": "/api/cron-job",
       "schedule": "0 10 * * *"
     }
-  ],
-  "functions": {
-    "api/scanner.js": {
-      "maxDuration": 60
-    }
-  }
+  ]
 }
 
