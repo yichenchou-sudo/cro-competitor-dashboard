@@ -16,7 +16,7 @@ export default async function handler(request) {
         });
     } catch (error) {
         console.error('Error fetching URL list from KV:', error);
-        return new Response(JSON.stringify({ error: 'Failed to fetch URL list from database.' }), {
+        return new Response(JSON.stringify({ error: 'A server error occurred in get-urls. This is likely due to a missing or incorrect Vercel KV (Upstash) environment variable.' }), {
           status: 500,
           headers: { 'Content-Type': 'application/json' },
         });
