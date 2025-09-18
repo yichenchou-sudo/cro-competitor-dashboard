@@ -191,6 +191,7 @@
                 const tr = document.createElement('tr');
                 tr.dataset.competitor = row.competitor;
                 tr.dataset.change = row.changeDetected ? 'yes' : 'no';
+                tr.dataset.url = row.url; // Add full URL for identification
 
                 const changeDetectedHTML = row.changeDetected 
                     ? `<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-900 text-green-300">Yes</span>`
@@ -337,11 +338,11 @@
             if (!removeButton) return;
             const rowToRemove = removeButton.closest('tr');
             
-            const uniqueId = rowToRemove.querySelector('td:nth-child(2) a').href + rowToRemove.querySelector('td:nth-child(1)').innerText;
-
+            const urlToRemove = rowToRemove.dataset.url;
+            const dateToRemove = rowToRemove.querySelector('td').innerText;
+            
             currentReportData = currentReportData.filter(row => {
-                 const rowId = new URL(row.url).origin + row.scanDate;
-                 return rowId !== uniqueId;
+                 return !(row.url === urlToRemove && row.scanDate === dateToRemove);
             });
             
             renderReport(currentReportData);
@@ -397,4 +398,3 @@
     </script>
 </body>
 </html>
-
