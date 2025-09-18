@@ -159,7 +159,7 @@
         }
 
         function renderReport(reportData) {
-            if (!reportData || reportData.length === 0) {
+             if (!reportData || reportData.length === 0) {
                  if(currentMonitoredUrls.length > 0) {
                     reportBody.innerHTML = `<tr><td colspan="8" class="text-center p-8">Scan results are not yet available. Click 'Force Scan'.</td></tr>`;
                 } else {
