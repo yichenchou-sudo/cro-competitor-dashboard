@@ -50,14 +50,15 @@ async function getAiAnalysis(oldHtml, newHtml) {
   }
 }
 
-// --- UPGRADED Core Scanner Logic using a Headless Browser ---
+// --- UPGRADED Core Scanner Logic using a Headless Browser with Proxies ---
 async function fetchAndAnalyze(url) {
   const BROWSERLESS_API_KEY = process.env.BROWSERLESS_API_KEY;
   if (!BROWSERLESS_API_KEY) {
       return { content: null, error: "BROWSERLESS_API_KEY is not set in environment variables." };
   }
   
-  const BROWSERLESS_API_URL = `https://chrome.browserless.io/content?token=${BROWSERLESS_API_KEY}`;
+  // By adding the `&stealth&proxy=residential&proxyCountry=gb` parameters, we make the request look much more human.
+  const BROWSERLESS_API_URL = `https://chrome.browserless.io/content?token=${BROWSERLESS_API_KEY}&stealth&proxy=residential&proxyCountry=gb`;
 
   try {
     const response = await fetch(BROWSERLESS_API_URL, {
