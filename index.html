@@ -24,13 +24,11 @@
 <body class="text-gray-200 p-4 sm:p-6 lg:p-8">
 
     <div class="max-w-7xl mx-auto">
-        <!-- Header -->
+        <!-- Header, Add URL, Filters & Actions Sections are identical to the last version -->
         <div class="mb-6">
             <h1 class="text-3xl font-bold text-white">AI Competitor CRO Dashboard</h1>
             <p id="last-updated" class="text-gray-400 mt-1">Fetching latest data...</p>
         </div>
-
-        <!-- Add URL Section -->
         <div class="mb-4 p-4 bg-gray-800 rounded-lg">
             <h3 class="text-lg font-medium text-white mb-2">Monitor a New URL</h3>
             <div class="flex flex-wrap gap-4 items-end">
@@ -40,29 +38,19 @@
                 </div>
                 <button id="add-url-btn" class="bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-2 px-4 rounded-md transition-colors duration-200">Add URL</button>
             </div>
-            <p id="success-message" class="text-green-400 text-sm mt-2 hidden">URL added successfully! It will be included in the next scan.</p>
         </div>
-
-        <!-- Filters & Actions -->
         <div class="flex flex-wrap gap-4 mb-4 p-4 bg-gray-800 rounded-lg items-end">
             <div>
                 <label for="competitor-filter" class="block text-sm font-medium text-gray-300">Filter by Competitor</label>
-                <select id="competitor-filter" class="mt-1 block w-full pl-3 pr-10 py-2 text-base bg-gray-700 border-gray-600 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md">
-                    <option>All</option>
-                </select>
+                <select id="competitor-filter" class="mt-1 block w-full pl-3 pr-10 py-2 text-base bg-gray-700 border-gray-600 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"><option>All</option></select>
             </div>
             <div>
                 <label for="change-filter" class="block text-sm font-medium text-gray-300">Filter by Change</label>
-                <select id="change-filter" class="mt-1 block w-full pl-3 pr-10 py-2 text-base bg-gray-700 border-gray-600 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md">
-                    <option>All Changes</option>
-                    <option>Changes Only</option>
-                </select>
+                <select id="change-filter" class="mt-1 block w-full pl-3 pr-10 py-2 text-base bg-gray-700 border-gray-600 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md"><option>All Changes</option><option>Changes Only</option></select>
             </div>
-            <div class="flex-grow"></div> <!-- Spacer -->
+            <div class="flex-grow"></div>
             <div class="flex gap-4">
-                 <button id="force-scan-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md transition-colors duration-200 flex items-center justify-center h-full">
-                    <span id="scan-btn-text">Force Scan</span>
-                </button>
+                 <button id="force-scan-btn" class="bg-blue-600 hover:bg-blue-700 text-white font-bold py-2 px-4 rounded-md transition-colors duration-200 flex items-center justify-center h-full"><span id="scan-btn-text">Force Scan</span></button>
                 <button id="export-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded-md transition-colors duration-200 h-full">Export CSV</button>
             </div>
         </div>
@@ -82,14 +70,7 @@
                         <th class="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Actions</th>
                     </tr>
                 </thead>
-                <tbody id="report-body" class="bg-gray-900 divide-y divide-gray-800">
-                    <tr>
-                        <td colspan="8" class="text-center p-8">
-                            <div class="loader"></div>
-                            <p>Loading latest competitor report...</p>
-                        </td>
-                    </tr>
-                </tbody>
+                <tbody id="report-body"></tbody>
             </table>
         </div>
     </div>
@@ -101,22 +82,16 @@
         const changeFilter = document.getElementById('change-filter');
         const newUrlInput = document.getElementById('new-url-input');
         const addUrlBtn = document.getElementById('add-url-btn');
-        const successMessage = document.getElementById('success-message');
         const exportBtn = document.getElementById('export-btn');
         const forceScanBtn = document.getElementById('force-scan-btn');
         const scanBtnText = document.getElementById('scan-btn-text');
         
-        let allRows = []; 
-        let currentReportData = [];
+        let allTableRows = []; 
+        let currentMonitoredUrls = [];
         let pollingInterval;
         let lastKnownTimestamp = null;
 
-        const initialMockData = {
-            lastUpdated: new Date().toISOString(),
-            reportData: []
-        };
-        
-        document.addEventListener('DOMContentLoaded', () => loadInitialData());
+        document.addEventListener('DOMContentLoaded', loadInitialData);
         competitorFilter.addEventListener('change', applyFilters);
         changeFilter.addEventListener('change', applyFilters);
         addUrlBtn.addEventListener('click', addNewUrl);
@@ -124,51 +99,52 @@
         reportBody.addEventListener('click', handleRemoveUrl);
         forceScanBtn.addEventListener('click', handleForceScan);
 
-        function saveDataToLocalStorage() {
-            const dataToSave = {
-                lastUpdated: new Date().toISOString(),
-                reportData: currentReportData
-            };
-            localStorage.setItem('competitorReportData', JSON.stringify(dataToSave));
-        }
+        async function loadInitialData() {
+            // Load the last seen report from local storage first for instant UI
+            const cachedReport = localStorage.getItem('competitorReport');
+            if(cachedReport) updateDashboard(JSON.parse(cachedReport));
 
-        function loadInitialData() {
-            const savedData = localStorage.getItem('competitorReportData');
-            const dataToLoad = savedData ? JSON.parse(savedData) : initialMockData;
-            lastKnownTimestamp = dataToLoad.lastUpdated;
-            updateDashboard(dataToLoad);
+            // Then, fetch the master URL list from the server
+            try {
+                const response = await fetch(window.location.origin + '/api/get-urls');
+                const data = await response.json();
+                currentMonitoredUrls = data.urls || [];
+                if (currentMonitoredUrls.length === 0) {
+                     reportBody.innerHTML = `<tr><td colspan="8" class="text-center p-8">No URLs are being monitored. Add one to begin.</td></tr>`;
+                }
+            } catch (e) {
+                console.error("Could not fetch URL list", e);
+            }
+            // Fetch the latest report to ensure data is fresh
+            fetchLatestReport();
         }
 
         function updateDashboard(data) {
-            currentReportData = data.reportData;
-            renderReport(currentReportData);
-            populateFilters(currentReportData);
-            const updatedDate = new Date(data.lastUpdated).toISOString();
-            lastUpdatedEl.textContent = `Last Updated: ${new Date(updatedDate).toLocaleString('en-GB', { dateStyle: 'long', timeStyle: 'short'})} BST`;
-            saveDataToLocalStorage();
+            renderReport(data.reportData || []);
+            populateFilters(data.reportData || []);
+            lastKnownTimestamp = data.lastUpdated;
+            const updatedDate = new Date(data.lastUpdated).toLocaleString('en-GB', { dateStyle: 'long', timeStyle: 'short'});
+            lastUpdatedEl.textContent = `Last Updated: ${updatedDate} BST`;
+            localStorage.setItem('competitorReport', JSON.stringify(data));
         }
 
         function renderReport(reportData) {
             if (!reportData || reportData.length === 0) {
-                reportBody.innerHTML = `<tr><td colspan="8" class="text-center p-8">No data available. Add a URL and click 'Force Scan' to begin.</td></tr>`;
+                if(currentMonitoredUrls.length > 0) {
+                    reportBody.innerHTML = `<tr><td colspan="8" class="text-center p-8">Scan results are not yet available. Click 'Force Scan'.</td></tr>`;
+                }
                 return;
             }
-
-            reportBody.innerHTML = '';
+            
+            reportBody.innerHTML = ''; // Clear previous results
             reportData.forEach(row => {
-                const tr = document.createElement('tr');
+                 const tr = document.createElement('tr');
                 tr.dataset.competitor = row.competitor;
                 tr.dataset.change = row.changeDetected ? 'yes' : 'no';
                 tr.dataset.url = row.url;
-
-                const changeDetectedHTML = row.changeDetected 
-                    ? `<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-900 text-green-300">Yes</span>`
-                    : `<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-900 text-gray-400">No</span>`;
-                
-                const statusHTML = row.changeStatus === 'Pending Scan' 
-                    ? `<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-900 text-yellow-300">${row.changeStatus}</span>`
-                    : `<span class="text-gray-400">${row.changeStatus || 'N/A'}</span>`;
-
+                // ... (rest of render logic is the same)
+                 const changeDetectedHTML = row.changeDetected ? `<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-green-900 text-green-300">Yes</span>` : `<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-red-900 text-gray-400">No</span>`;
+                const statusHTML = row.changeStatus === 'Pending Scan' ? `<span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full bg-yellow-900 text-yellow-300">${row.changeStatus}</span>` : `<span class="text-gray-400">${row.changeStatus || 'N/A'}</span>`;
                 tr.innerHTML = `
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-400">${row.scanDate}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-white"><a href="${row.url}" target="_blank" class="text-indigo-400 hover:text-indigo-300">${row.competitor}</a></td>
@@ -177,100 +153,144 @@
                     <td class="px-6 py-4 whitespace-nowrap text-sm">${statusHTML}</td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-400">${row.changeCategory || 'N/A'}</td>
                     <td class="px-6 py-4 text-sm text-gray-300">
-                        ${row.changeDetected ? `
-                        <div class="tooltip">
-                            <span class="font-semibold text-white">${row.summary || 'Details available.'}</span>
-                            <span class="tooltiptext">
-                                <ul>
-                                    <li><strong>Insight:</strong> ${row.insight}</li>
-                                    <li><strong>Hypothesis:</strong> ${row.hypothesis}</li>
-                                </ul>
-                            </span>
-                        </div>` : (row.summary || 'No significant changes detected.')}
+                        ${row.changeDetected ? `<div class="tooltip"><span class="font-semibold text-white">${row.summary || 'Details available.'}</span><span class="tooltiptext"><ul><li><strong>Insight:</strong> ${row.insight}</li><li><strong>Hypothesis:</strong> ${row.hypothesis}</li></ul></span></div>` : (row.summary || 'No significant changes detected.')}
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-center">
-                        <button class="remove-btn text-gray-500 hover:text-red-500 transition-colors duration-200" title="Remove URL">
-                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-                        </button>
+                        <button class="remove-btn text-gray-500 hover:text-red-500 transition-colors duration-200" title="Remove URL"><svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 pointer-events-none" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg></button>
                     </td>
                 `;
                 reportBody.appendChild(tr);
             });
-            allRows = Array.from(reportBody.getElementsByTagName('tr'));
+            allTableRows = Array.from(reportBody.getElementsByTagName('tr'));
         }
         
-        function populateFilters(reportData) { /* ... same as previous version ... */ }
-        function applyFilters() { /* ... same as previous version ... */ }
+        function populateFilters(reportData) { 
+            if (!reportData) return;
+            const competitors = [...new Set(reportData.map(row => row.competitor))];
+            competitorFilter.innerHTML = '<option>All</option>';
+            competitors.forEach(name => {
+                const option = document.createElement('option');
+                option.value = name;
+                option.textContent = name;
+                competitorFilter.appendChild(option);
+            });
+         }
+        function applyFilters() { 
+            const selectedCompetitor = competitorFilter.value;
+            const selectedChange = changeFilter.value;
 
-        function addNewUrl() {
+            allTableRows.forEach(row => {
+                const competitorMatch = selectedCompetitor === 'All' || row.dataset.competitor === selectedCompetitor;
+                const changeMatch = selectedChange === 'All Changes' || (selectedChange === 'Changes Only' && row.dataset.change === 'yes');
+                
+                row.style.display = (competitorMatch && changeMatch) ? '' : 'none';
+            });
+         }
+
+        async function addNewUrl() {
             const url = newUrlInput.value.trim();
-            if (!url) { newUrlInput.focus(); return; }
-
-            const today = new Date().toISOString().split('T')[0].replace('2024','2025');
-            let competitorName = 'Unknown', subcategory = 'General';
-            try {
-                const urlObject = new URL(url);
-                let hostname = urlObject.hostname.replace('www.', '');
-                competitorName = hostname.charAt(0).toUpperCase() + hostname.slice(1).split('.')[0];
-                const pathSegments = urlObject.pathname.split('/').filter(Boolean);
-                if (pathSegments.length > 0) {
-                    const meaningfulSegment = pathSegments.find(s => s.length > 3 && s !== 'uk') || pathSegments[0];
-                    subcategory = meaningfulSegment.replace(/-/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-                }
-            } catch (e) { competitorName = "Invalid URL"; }
+            if (!url || currentMonitoredUrls.includes(url)) return;
             
-            const newRow = { scanDate: today, competitor: competitorName, url: url, subcategory: subcategory, changeDetected: false, changeStatus: 'Pending Scan' };
-            currentReportData.unshift(newRow);
-            saveDataToLocalStorage();
-            renderReport(currentReportData);
-            populateFilters(currentReportData);
+            currentMonitoredUrls.push(url);
             newUrlInput.value = '';
+            
+            // Update the server with the new list
+            await fetch(window.location.origin + '/api/update-urls', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ urls: currentMonitoredUrls }),
+            });
+            
+            // Optionally, add a placeholder row for immediate feedback
+            // For now, we'll just wait for the next scan
         }
         
-        function exportTableToCSV() { /* ... same as previous version ... */ }
-        function handleRemoveUrl(event) { /* ... same as previous version ... */ }
+        function exportTableToCSV() { 
+            const headers = Array.from(document.querySelectorAll("thead th")).map(th => th.textContent.trim()).slice(0, -1);
+            let csvContent = headers.join(',') + '\n';
+
+            allTableRows.filter(row => row.style.display !== 'none').forEach(row => {
+                const cells = row.querySelectorAll('td');
+                const rowData = [
+                    cells[0].innerText, cells[1].innerText, cells[2].innerText, 
+                    cells[3].innerText, cells[4].innerText, cells[5].innerText
+                ];
+                
+                let summaryText = cells[6].innerText.replace(/"/g, '""');
+                const tooltip = cells[6].querySelector('.tooltiptext');
+                if (tooltip) {
+                    summaryText = Array.from(tooltip.querySelectorAll('li'))
+                        .map(li => li.textContent.trim().replace(/"/g, '""'))
+                        .join(' | ');
+                }
+                rowData.push(`"${summaryText}"`);
+                
+                csvContent += rowData.join(',') + '\n';
+            });
+
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            const url = URL.createObjectURL(blob);
+            link.setAttribute("href", url);
+            link.setAttribute("download", "competitor_report.csv");
+            link.style.visibility = 'hidden';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+        
+        async function handleRemoveUrl(event) {
+            const removeButton = event.target.closest('.remove-btn');
+            if (!removeButton) return;
+            const rowToRemove = removeButton.closest('tr');
+            const urlToRemove = rowToRemove.dataset.url;
+            
+            currentMonitoredUrls = currentMonitoredUrls.filter(url => url !== urlToRemove);
+            
+             await fetch(window.location.origin + '/api/update-urls', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ urls: currentMonitoredUrls }),
+            });
+            
+            rowToRemove.remove(); // Immediate UI feedback
+        }
         
         async function fetchLatestReport() {
             try {
-                const response = await fetch('/api/get-report');
+                const response = await fetch(window.location.origin + '/api/get-report');
                 if (!response.ok) return null;
-                return await response.json();
-            } catch (error) {
-                console.error("Failed to fetch latest report:", error);
-                return null;
-            }
+                const report = await response.json();
+                if(report.lastUpdated !== lastKnownTimestamp){
+                    updateDashboard(report);
+                }
+            } catch (error) { console.error("Could not fetch latest report", error); }
         }
 
         async function handleForceScan() {
              if (forceScanBtn.disabled) return;
             
             forceScanBtn.disabled = true;
-            scanBtnText.textContent = 'Queueing...';
-            
-            const urlsToScan = currentReportData.map(row => row.url);
+            scanBtnText.textContent = 'Queueing Scan...';
 
             try {
-                const response = await fetch('/api/start-scan', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ urls: urlsToScan }),
+                const response = await fetch(window.location.origin + '/api/start-scan', {
+                    method: 'POST', // start-scan is now a simple trigger
                 });
 
                 if (!response.ok) throw new Error('Failed to queue scan.');
 
                 scanBtnText.textContent = 'Scan in Progress...';
-                lastUpdatedEl.textContent = "Scan in progress... dashboard will refresh automatically.";
+                lastUpdatedEl.textContent = "Scan in progress... dashboard will refresh automatically."
                 
-                pollingInterval = setInterval(async () => {
-                    const latestReport = await fetchLatestReport();
-                    if (latestReport && latestReport.lastUpdated !== lastKnownTimestamp) {
-                        lastKnownTimestamp = latestReport.lastUpdated;
-                        updateDashboard(latestReport);
-                        clearInterval(pollingInterval);
-                        forceScanBtn.disabled = false;
-                        scanBtnText.textContent = 'Force Scan';
-                    }
-                }, 10000);
+                pollingInterval = setInterval(fetchLatestReport, 10000); // Check for results every 10 seconds
+
+                // Stop polling after a while to prevent infinite loops
+                setTimeout(() => {
+                    clearInterval(pollingInterval);
+                    forceScanBtn.disabled = false;
+                    scanBtnText.textContent = 'Force Scan';
+                }, 300000); // Stop after 5 minutes
 
             } catch (error) {
                 console.error("Force scan failed:", error);
