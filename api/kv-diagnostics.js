@@ -5,33 +5,26 @@ export const config = {
 };
 
 export default async function handler() {
+  const envCheck = {
+    KV_REST_API_URL: Boolean(process.env.KV_REST_API_URL),
+    KV_REST_API_TOKEN: Boolean(process.env.KV_REST_API_TOKEN),
+  };
+
   try {
-    // Check if env vars are present
-    const envCheck = {
-      KV_REST_API_URL: !!process.env.KV_REST_API_URL,
-      KV_REST_API_TOKEN: !!process.env.KV_REST_API_TOKEN,
-    };
-
-    // Try a test set/get
-    const testKey = `kv-diagnostics-test:${Date.now()}`;
-    let writeResult = null;
-    let readResult = null;
-
-    try {
-      writeResult = await kv.set(testKey, 'diagnostics-ok', { ex: 60 }); // expires in 60s
-      readResult = await kv.get(testKey);
-    } catch (err) {
-      console.error('KV Test Error:', err);
+    if (!envCheck.KV_REST_API_URL || !envCheck.KV_REST_API_TOKEN) {
       return new Response(
         JSON.stringify({
           status: 'error',
-          message: 'KV write/get failed',
-          error: err.message,
+          message: 'Missing KV_REST_API_URL or KV_REST_API_TOKEN',
           envCheck,
         }),
         { status: 500, headers: { 'Content-Type': 'application/json' } }
       );
     }
+
+    const testKey = `kv-diagnostics-test:${Date.now()}`;
+    const writeResult = await kv.set(testKey, 'diagnostics-ok', { ex: 60 });
+    const readResult = await kv.get(testKey);
 
     return new Response(
       JSON.stringify({
@@ -43,10 +36,16 @@ export default async function handler() {
       }),
       { status: 200, headers: { 'Content-Type': 'application/json' } }
     );
-
   } catch (err) {
+    console.error('KV Diagnostics Error:', err);
     return new Response(
       JSON.stringify({
         status: 'error',
-        message: 'Unexpected error running diagnostics',
+        message: 'KV write/get failed',
         error: err.message,
+        envCheck,
+      }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+}
